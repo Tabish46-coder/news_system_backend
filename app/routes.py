@@ -3,6 +3,7 @@ from flask import jsonify, request
 import requests
 from datetime import datetime
 from sentence_transformers import SentenceTransformer
+from deep_translator import GoogleTranslator
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 from bs4 import BeautifulSoup
@@ -18,6 +19,7 @@ model = SentenceTransformer('all-MiniLM-L6-v2')
 category_embeddings = {
     cat: model.encode(cat) for cat in VALID_CATEGORIES
 }
+
 
 @app.route("/news", methods=["GET"])
 def get_news():
@@ -295,4 +297,18 @@ def recommend_categories():
         "email": email,
         "recommended_categories": recommendations,
         "similarity_scores": scores
+    })
+
+
+
+@app.route('/translate_urdu', methods=['GET'])
+def translate_to_urdu():
+    text = request.args.get('text')
+    if not text:
+        return jsonify({"error": "Text parameter is required"}), 400
+
+    translated = GoogleTranslator(source='auto', target='ur').translate(text)
+    return jsonify({
+        "original_text": text,
+        "translated_text": translated
     })
