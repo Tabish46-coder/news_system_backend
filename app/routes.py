@@ -312,3 +312,28 @@ def translate_to_urdu():
         "original_text": text,
         "translated_text": translated
     })
+
+
+
+@app.route('/update-password', methods=['PUT'])
+def update_password():
+    data = request.get_json()
+
+    email = data.get('email')
+    new_password = data.get('password')
+
+    if not email or not new_password:
+        return jsonify({"message": "Email and Password are required"}), 400
+
+    user = Signup.query.filter_by(Email=email).first()
+
+    if not user:
+        return jsonify({"message": "User not found"}), 404
+
+    # Update password fields
+    user.Password = new_password
+    user.ConfirmPassword = new_password
+
+    db.session.commit()
+
+    return jsonify({"message": "Password updated successfully"}), 200
