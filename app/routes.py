@@ -8,7 +8,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 from bs4 import BeautifulSoup
 from app.models import login,Signup,NewsArticle
-
+import random
 NEWS_API_URL = "https://newsapi.org/v2/top-headlines"
 
 VALID_CATEGORIES = {
@@ -20,13 +20,50 @@ category_embeddings = {
     cat: model.encode(cat) for cat in VALID_CATEGORIES
 }
 
+CATEGORY_MAP = {
+    "business 💼": "business",
+    "entertainment ✨": "entertainment",
+    "health 🏥": "health",
+    "science 🔬": "science",
+    "sports ⚽": "sports",
+    "technology 💻": "technology",
+    "for you ⭐️": "for_you"   # special handling
+}
+
+
+import random
+
+VALID_CATEGORIES = {
+    "business", "entertainment", "general", "health", "science", "sports", "technology"
+}
+
+CATEGORY_MAP = {
+    "business 💼": "business",
+    "entertainment ✨": "entertainment",
+    "health 🏥": "health",
+    "science 🔬": "science",
+    "sports ⚽": "sports",
+    "technology 💻": "technology",
+    "for you ⭐️": "for_you"   # special handling
+}
 
 @app.route("/news", methods=["GET"])
 def get_news():
-    
-    category = request.args.get("category", "").lower()
-    if category not in VALID_CATEGORIES:
-        return jsonify(error=f"Invalid category. Choose from: {', '.join(VALID_CATEGORIES)}"), 400
+    category_raw = request.args.get("category", "").lower()
+
+    # Map emojis / display names to valid backend categories
+    if category_raw in CATEGORY_MAP:
+        mapped_category = CATEGORY_MAP[category_raw]
+        if mapped_category == "for_you":
+            # pick any random valid category if "For You"
+            category = random.choice(list(VALID_CATEGORIES))
+        else:
+            category = mapped_category
+    elif category_raw in VALID_CATEGORIES:
+        category = category_raw
+    else:
+        # fallback random if truly invalid
+        category = random.choice(list(VALID_CATEGORIES))
 
     params = {
         "apiKey": "f51ec80138114dda8d7042531bdd733a",
@@ -37,6 +74,7 @@ def get_news():
 
     response = requests.get(NEWS_API_URL, params=params, timeout=8)
     return jsonify(response.json()), response.status_code
+
 
 
 
@@ -265,11 +303,24 @@ def recommend_categories():
 
     user = login.query.filter_by(email=email).first()
     if not user:
-        return jsonify({"error": "User not found with provided email"}), 404
+        # fallback instead of error
+        fallback_categories = ["business", "Entertainment", "Health", "Science", "Sports", "Technology"]
+        return jsonify({
+            "email": email,
+            "recommended_categories": [random.choice(fallback_categories)],
+            "similarity_scores": "No user found, fallback category used"
+        })
 
     user_articles = NewsArticle.query.filter_by(login_id=user.id).all()
+
+    # If no articles found → fallback
     if not user_articles:
-        return jsonify({"error": "No saved articles found for this user"}), 404
+        fallback_categories = ["business", "Entertainment", "Health", "Science", "Sports", "Technology"]
+        return jsonify({
+            "email": email,
+            "recommended_categories": [random.choice(fallback_categories)],
+            "similarity_scores": "No saved articles, fallback category used"
+        })
 
     # Build user profile vector from article title + description
     user_vectors = []
@@ -278,9 +329,16 @@ def recommend_categories():
         if text.strip():
             user_vectors.append(model.encode(text))
 
+    # If no valid content → fallback
     if not user_vectors:
-        return jsonify({"error": "No valid article content to build user profile"}), 400
+        fallback_categories = ["business", "Entertainment", "Health", "Science", "Sports", "Technology"]
+        return jsonify({
+            "email": email,
+            "recommended_categories": [random.choice(fallback_categories)],
+            "similarity_scores": "No valid article content, fallback category used"
+        })
 
+    # Compute user profile
     user_profile_vector = np.mean(user_vectors, axis=0)
 
     # Compute similarity with category vectors
@@ -293,10 +351,15 @@ def recommend_categories():
     sorted_categories = sorted(scores.items(), key=lambda x: x[1], reverse=True)
     recommendations = [cat for cat, _ in sorted_categories[:3]]
 
+    # Final fallback if similarity failed
+    if not recommendations:
+        fallback_categories = ["business", "Entertainment", "Health", "Science", "Sports", "Technology"]
+        recommendations = [random.choice(fallback_categories)]
+
     return jsonify({
         "email": email,
         "recommended_categories": recommendations,
-        "similarity_scores": scores
+        "similarity_scores": scores if scores else "No similarity scores available"
     })
 
 
